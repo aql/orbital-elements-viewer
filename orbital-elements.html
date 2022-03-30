@@ -1,0 +1,361 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <title>軌道要素</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <style>
+input[type="number"] { width: 90% }
+html { width: 100%; height: 100%; }
+body {
+  width: 100%; height: 100%;
+  margin: 0; padding: 0;
+  color: white;
+  font-size: small;
+}
+
+#app {
+  width: 100%; height: 100%;
+  margin: 0; padding: 0;
+  display: flex;
+  flex-direction: row;
+}
+
+#app h1 {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  color: white;
+  z-index: 100;
+}
+
+.blocks {
+  display: flex;
+  flex-direction: row;
+}
+
+.block {
+  width: 50vw;
+  height: 100vh;
+}
+
+@media screen and (max-width:720px) {
+  .blocks {
+    flex-direction: column;
+  }
+  .block {
+    width: 100vw;
+    height: 50vh;
+  }
+  .hide-small-display {
+    display: none;
+  }
+}
+
+.svg svg {
+  width: 100%; height: 100%;
+  background-color: #030108;
+}
+
+#gl {
+  flex: 1;
+}
+
+#controller {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  border: 1px solid green;
+  padding: 10px;
+  background-color: white;
+  color: black;
+  font-size: small;
+}
+  </style>
+</head>
+<body>
+  <div id="app" style="display:flex; flex-direction:column;">
+    <h1>軌道要素</h1>
+    <div class="blocks">
+      <div class="block svg">
+        <svg>
+          <g :transform="`translate(${width/2},${height/2})`">
+            <g>
+              <line :x1="width/5" :y1="0" :x2="width/5 - 5" :y2="5" stroke="yellow" stroke-width="0.5" />
+              <line :x1="width/5" :y1="0" :x2="width/5 - 5" :y2="-5" stroke="yellow" stroke-width="0.5" />
+              <line :x1="0" :y1="0" :x2="width/5" :y2="0" stroke="yellow" stroke-width="0.5" />
+            </g>
+            <g>
+              <line :x1="0" :y1="-width/5" :x2="5" :y2="-width/5 + 5" stroke="gray" stroke-width="0.5" />
+              <line :x1="0" :y1="-width/5" :x2="-5" :y2="-width/5 + 5" stroke="gray" stroke-width="0.5" />
+              <line :x1="0" :y1="0" :x2="0" :y2="-width/5" stroke="gray" stroke-width="0.5" />
+            </g>
+
+            <circle cx="0" cy="0" :r="solarRadius" :fill="solarColor" />
+
+            <ellipse
+              :cx="- f * a * e"
+              :cy="0"
+              :rx="f * a"
+              :ry="f * a * Math.sqrt(1 - Math.pow(e, 2))"
+              :transform="`rotate(${-node}) scale(1.0, ${Math.cos(incl/180 * Math.PI)}) rotate(${-peri})`"
+              fill="none"
+              stroke="#ffffff"
+              stroke-width="1"
+              />
+          </g>
+        </svg>
+      </div>
+      <div class="block" id="gl">
+        <div style="position:absolute">
+          <label>
+            <input type="checkbox" v-model="usePerspective" @change="updatePerspective">
+            Perspective
+          </label>
+        </div>
+      </div>
+    </div>
+    <div id="controller">
+      <div for="a" style="display:flex">
+        <div style="flex:1">軌道長半径<span class="hide-small-display">(a)</span></div>
+        <div style="width:4em">
+          <input v-model="a" type="number" step="0.1" min="0.1" @change="updateOrbit">
+        </div>
+      </div>
+      <div for="e" style="display:flex">
+        <div style="flex:1">離心率<span class="hide-small-display">(e)</span></div>
+        <div style="width:4em">
+          <input v-model="e" type="number" step="0.01" max="0.99" min="0.00" @change="updateOrbit">
+        </div>
+      </div>
+      <div for="i" style="display:flex">
+        <div style="flex:1">近点引数<span class="hide-small-display">(peri)</span></div>
+        <div style="width:4em">
+          <input v-model="peri" type="number" step="1.0" min="0.0" max="360.0">
+        </div>
+      </div>
+      <div for="i" style="display:flex">
+        <div style="flex:1">軌道傾斜角<span class="hide-small-display">(incl)</span></div>
+        <div style="width:4em">
+          <input v-model="incl" type="number" step="1.0" min="0.0" max="180.0">
+        </div>
+      </div>
+      <div for="W" style="display:flex">
+        <div style="flex:1">昇交点黄経<span class="hide-small-display">(node)</span></div>
+        <div style="width:4em">
+          <input v-model="node" type="number" step="1.0" min="0.0" max="360.0">
+        </div>
+      </div>
+    </div>
+  </div>
+  <!-- <script src="https://unpkg.com/vue@3"></script> -->
+  <script src="https://unpkg.com/vue@3.2.31/dist/vue.global.prod.js"></script>
+  <script src="https://unpkg.com/three@0.138.3/build/three.js"></script>
+  <script src="https://unpkg.com/three@0.138.3/examples/js/controls/OrbitControls.js"></script>
+  <script type="module">
+const { createApp, ref, onMounted } = Vue
+createApp({
+  setup() {
+    const solarRadius = ref(3)
+    const solarColor  = ref('#ff0')
+    const a      = ref(1.0)
+    const e      = ref(0.8)
+    const peri   = ref(0.0)
+    const incl   = ref(0.0)
+    const node   = ref(0.0)
+    const f      = ref(150)
+
+    const usePerspective = ref(true)
+
+    const smallDevice = 720
+    const width  = ref(window.innerWidth < smallDevice ? window.innerWidth : window.innerWidth / 2)
+    const height = ref(window.innerWidth < smallDevice ? window.innerHeight / 2 : window.innerHeight)
+    const tr     = ref(window.innerWidth < smallDevice ? 1.3 : 2.41)
+    const z      = ref(window.innerWidth < smallDevice ? f.value * 4.5 : f.value * 9)
+
+    // # WebGL Rendering Objects
+    // scene
+    const scene = new THREE.Scene()
+
+    // axis
+    scene.add(new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(0, 0, 0),
+        new THREE.Vector3(f.value * 2, 0, 0),
+      ]),
+      new THREE.LineBasicMaterial({color: 0xffff00})
+    ))
+    scene.add(new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(0, 0, 0),
+        new THREE.Vector3(0, f.value * 2, 0),
+      ]),
+      new THREE.LineBasicMaterial({color: 0x000099})
+    ))
+    scene.add(new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(0, 0, 0),
+        new THREE.Vector3(0, 0, f.value * 2),
+      ]),
+      new THREE.LineBasicMaterial({color: 0x990000})
+    ))
+    scene.add(new THREE.Mesh(
+      new THREE.PlaneGeometry(f.value * 2, f.value * 2, 1, 1),
+      new THREE.MeshBasicMaterial({color: 0x303030, transparent: true, opacity: 0.1})
+    ))
+
+    // orbit
+    const makeOrbit = () => {
+      const sz = 1000
+      const points = []
+      for (let i = 0; i <= sz; i++) {
+        const t = 2 * Math.PI * (i / sz)
+        const r = a.value * (1 - Math.pow(e.value, 2)) / (1 + e.value * Math.cos(t))
+        const x = f.value * r * Math.cos(t)
+        const y = f.value * r * Math.sin(t)
+        points.push(new THREE.Vector3(x, y, 0))
+      }
+
+      const orbit = new THREE.Line(
+        new THREE.BufferGeometry().setFromPoints( points ),
+        new THREE.LineBasicMaterial({color: 0xffffff})
+      )
+
+      return orbit
+    }
+
+    let orbit
+    const updateOrbit = () => {
+      if (orbit) { scene.remove(orbit) }
+      orbit = makeOrbit()
+      scene.add(orbit)
+    }
+    updateOrbit()
+
+    const nodeLine = new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(0, 0, 0),
+        new THREE.Vector3(f.value / 2, 0, 0),
+      ]),
+      new THREE.LineBasicMaterial({color: 0x00ff00})
+    )
+    scene.add(nodeLine)
+
+    const inclLine = new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(0, 0, 0),
+        new THREE.Vector3(0, 0, f.value / 2),
+      ]),
+      new THREE.LineBasicMaterial({color: 0xff0000})
+    )
+    scene.add(inclLine)
+
+    const periLine = new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(0, 0, 0),
+        new THREE.Vector3(f.value / 2, 0, 0),
+      ]),
+      new THREE.LineBasicMaterial({color: 0x0000ff})
+    )
+    scene.add(periLine)
+
+    // camera
+    const aspect = width.value / height.value
+
+    const pCam = new THREE.PerspectiveCamera(30, aspect, 1, 10000)
+    pCam.position.set(0, 0, z.value)
+    scene.add(pCam)
+
+    const oCam = new THREE.OrthographicCamera(
+      -f.value * tr.value * aspect, f.value * tr.value * aspect,
+      f.value * tr.value, -f.value * tr.value,
+      -10000, 10000
+    )
+    oCam.position.set(0, 0, z.value)
+    scene.add(oCam)
+
+    // control
+    let updatePerspective = ref(() => {})
+
+    onMounted(() => {
+      // Rendering area
+      const elem = document.getElementById('gl')
+      const renderer = new THREE.WebGLRenderer()
+      renderer.setClearColor(0x030108, 1.0)
+      renderer.setSize(width.value, height.value)
+      elem.appendChild(renderer.domElement)
+
+      // control
+      let control = new THREE.OrbitControls(usePerspective.value ? pCam : oCam, elem)
+      updatePerspective.value = () => {
+        if (control) { control.dispose() }
+        control = new THREE.OrbitControls(usePerspective.value ? pCam : oCam, elem)
+      }
+
+      // render flame
+      const renderFrame = () => {
+        requestAnimationFrame(renderFrame)
+
+        const q = new THREE.Quaternion()
+
+        const qn = new THREE.Quaternion().setFromAxisAngle(
+          new THREE.Vector3(0, 0, 1),
+          (node.value / 180) * Math.PI
+        )
+        q.multiply(qn)
+        nodeLine.quaternion.set(q.x, q.y, q.z, q.w)
+
+        const qi = new THREE.Quaternion().setFromAxisAngle(
+          new THREE.Vector3(1, 0, 0),
+          (incl.value / 180) * Math.PI
+        )
+        q.multiply(qi)
+        inclLine.quaternion.set(q.x, q.y, q.z, q.w)
+
+        const qp = new THREE.Quaternion().setFromAxisAngle(
+          new THREE.Vector3(0, 0, 1),
+          (peri.value / 180) * Math.PI
+        )
+        q.multiply(qp)
+        periLine.quaternion.set(q.x, q.y, q.z, q.w)
+
+        orbit.quaternion.set(q.x, q.y, q.z, q.w)
+
+        renderer.render(scene, usePerspective.value ? pCam : oCam)
+      }
+
+      renderFrame()
+
+      window.addEventListener('resize', () => {
+        width.value  = window.innerWidth < smallDevice ? window.innerWidth : window.innerWidth / 2
+        height.value = window.innerWidth < smallDevice ? window.innerHeight / 2 : window.innerHeight
+        tr.value     = window.innerWidth < smallDevice ? 1.3 : 2.41
+
+        const aspect = width.value / height.value
+
+        renderer.setSize(width.value, height.value)
+        renderer.setPixelRatio(aspect)
+
+        pCam.aspect = aspect
+        pCam.updateProjectionMatrix()
+
+        oCam.left   = -f.value * tr.value * aspect
+        oCam.right  =  f.value * tr.value * aspect
+        oCam.top    =  f.value * tr.value
+        oCam.bottom = -f.value * tr.value
+        oCam.updateProjectionMatrix()
+      })
+    })
+
+    return {
+      solarRadius, solarColor,
+      a, e, peri, incl, node, f,
+      width, height,
+      updateOrbit,
+      usePerspective, updatePerspective
+    }
+  }
+}).mount('#app')
+  </script>
+</body>
+</html>
