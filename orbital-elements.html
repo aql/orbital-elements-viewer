@@ -148,12 +148,12 @@ body {
       </div>
     </div>
   </div>
-  <!-- <script src="https://unpkg.com/vue@3"></script> -->
   <script src="https://unpkg.com/vue@3.2.31/dist/vue.global.prod.js"></script>
   <script src="https://unpkg.com/three@0.138.3/build/three.js"></script>
   <script src="https://unpkg.com/three@0.138.3/examples/js/controls/OrbitControls.js"></script>
-  <script type="module">
-const { createApp, ref, onMounted } = Vue
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.meshline/1.4.0/THREE.MeshLine.min.js" integrity="sha512-xcjV55ij0+bQJJ2I8yazZ4EqX5xQ2jSePFtzuCFrw6rmTTuRngsTQFLyopwcRrTZ4oWxGW6zeuMKMgLWoT9bIw==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+  <script>
+const { createApp, ref, computed, onMounted } = Vue
 createApp({
   setup() {
     const solarRadius = ref(3)
@@ -177,6 +177,10 @@ createApp({
     // scene
     const scene = new THREE.Scene()
 
+    const light = new THREE.DirectionalLight(0xffffff, 1)
+    light.position.set(0, 0, 1)
+    scene.add(light)
+
     // axis
     scene.add(new THREE.Line(
       new THREE.BufferGeometry().setFromPoints([
@@ -199,27 +203,61 @@ createApp({
       ]),
       new THREE.LineBasicMaterial({color: 0x990000})
     ))
-    scene.add(new THREE.Mesh(
+    const plane = new THREE.Mesh(
       new THREE.PlaneGeometry(f.value * 2, f.value * 2, 1, 1),
-      new THREE.MeshBasicMaterial({color: 0x303030, transparent: true, opacity: 0.1})
-    ))
+      new THREE.MeshLambertMaterial({color: 0x303030, transparent: true, opacity: 0.1})
+    )
+    plane.position.set(0, 0, 0.000001)
+    scene.add(plane)
 
     // orbit
     const makeOrbit = () => {
       const sz = 1000
       const points = []
+      let prev
       for (let i = 0; i <= sz; i++) {
         const t = 2 * Math.PI * (i / sz)
         const r = a.value * (1 - Math.pow(e.value, 2)) / (1 + e.value * Math.cos(t))
         const x = f.value * r * Math.cos(t)
         const y = f.value * r * Math.sin(t)
-        points.push(new THREE.Vector3(x, y, 0))
-      }
+        const p = new THREE.Vector3(x, y, 0)
+        if (prev) {
+          const d = prev.distanceTo(p)
+          if (d < 1) {
+            continue
+          }
+        }
 
-      const orbit = new THREE.Line(
-        new THREE.BufferGeometry().setFromPoints( points ),
-        new THREE.LineBasicMaterial({color: 0xffffff})
+        points.push(p)
+        prev = p
+      }
+      points.push(points[0])
+
+      const curve = new THREE.CatmullRomCurve3(points)
+      const geom = new MeshLine()
+      geom.setPoints(curve.getPoints(1000))
+      const orbit = new THREE.Mesh(
+        geom,
+        new MeshLineMaterial({
+          transparent: true,
+          lineWidth: 1,
+          opacity: 0.9,
+          color: 0xffffff,
+          dashArray: 2,
+          dashOffset: 0,
+          dashRatio: 0.5,
+        })
       )
+
+      orbit.add(new THREE.Mesh(
+        geom,
+        new MeshLineMaterial({
+          transparent: true,
+          opacity: 0.1,
+          lineWidth: 0.8,
+          color: 0xffffff,
+        })
+      ))
 
       return orbit
     }
@@ -232,6 +270,7 @@ createApp({
     }
     updateOrbit()
 
+    // additional lines
     const nodeLine = new THREE.Line(
       new THREE.BufferGeometry().setFromPoints([
         new THREE.Vector3(0, 0, 0),
@@ -259,6 +298,42 @@ createApp({
     )
     scene.add(periLine)
 
+    // additional plane
+    const orbitalPlane = new THREE.Mesh(
+      new THREE.PlaneGeometry(f.value * 2, f.value * 2, 1, 1),
+      new THREE.MeshLambertMaterial({color: 0x0000cc, transparent: true, opacity: 0.1})
+    )
+    scene.add(orbitalPlane)
+
+    // orbit quaternion
+    const orbitQuaternion = computed(() => {
+      const q = new THREE.Quaternion()
+
+      const qn = new THREE.Quaternion().setFromAxisAngle(
+        new THREE.Vector3(0, 0, 1),
+        (node.value / 180) * Math.PI
+      )
+      q.multiply(qn)
+      nodeLine.quaternion.set(q.x, q.y, q.z, q.w)
+
+      const qi = new THREE.Quaternion().setFromAxisAngle(
+        new THREE.Vector3(1, 0, 0),
+        (incl.value / 180) * Math.PI
+      )
+      q.multiply(qi)
+      inclLine.quaternion.set(q.x, q.y, q.z, q.w)
+      orbitalPlane.quaternion.set(q.x, q.y, q.z, q.w)
+
+      const qp = new THREE.Quaternion().setFromAxisAngle(
+        new THREE.Vector3(0, 0, 1),
+        (peri.value / 180) * Math.PI
+      )
+      q.multiply(qp)
+      periLine.quaternion.set(q.x, q.y, q.z, q.w)
+
+      return q
+    })
+
     // camera
     const aspect = width.value / height.value
 
@@ -274,7 +349,7 @@ createApp({
     oCam.position.set(0, 0, z.value)
     scene.add(oCam)
 
-    // control
+    // camera changer
     let updatePerspective = ref(() => {})
 
     onMounted(() => {
@@ -286,40 +361,20 @@ createApp({
       elem.appendChild(renderer.domElement)
 
       // control
-      let control = new THREE.OrbitControls(usePerspective.value ? pCam : oCam, elem)
+      let control
       updatePerspective.value = () => {
         if (control) { control.dispose() }
         control = new THREE.OrbitControls(usePerspective.value ? pCam : oCam, elem)
       }
+      updatePerspective.value()
 
       // render flame
       const renderFrame = () => {
         requestAnimationFrame(renderFrame)
 
-        const q = new THREE.Quaternion()
-
-        const qn = new THREE.Quaternion().setFromAxisAngle(
-          new THREE.Vector3(0, 0, 1),
-          (node.value / 180) * Math.PI
-        )
-        q.multiply(qn)
-        nodeLine.quaternion.set(q.x, q.y, q.z, q.w)
-
-        const qi = new THREE.Quaternion().setFromAxisAngle(
-          new THREE.Vector3(1, 0, 0),
-          (incl.value / 180) * Math.PI
-        )
-        q.multiply(qi)
-        inclLine.quaternion.set(q.x, q.y, q.z, q.w)
-
-        const qp = new THREE.Quaternion().setFromAxisAngle(
-          new THREE.Vector3(0, 0, 1),
-          (peri.value / 180) * Math.PI
-        )
-        q.multiply(qp)
-        periLine.quaternion.set(q.x, q.y, q.z, q.w)
-
+        const q = orbitQuaternion.value
         orbit.quaternion.set(q.x, q.y, q.z, q.w)
+        orbit.material.uniforms.dashOffset.value -= 0.005
 
         renderer.render(scene, usePerspective.value ? pCam : oCam)
       }
