@@ -35,7 +35,7 @@ body {
 }
 
 .block {
-  width: 50vw;
+  width: 100vw;
   height: 100vh;
 }
 
@@ -77,35 +77,6 @@ body {
   <div id="app" style="display:flex; flex-direction:column;">
     <h1>軌道要素</h1>
     <div class="blocks">
-      <div class="block svg">
-        <svg>
-          <g :transform="`translate(${width/2},${height/2})`">
-            <g>
-              <line :x1="width/5" :y1="0" :x2="width/5 - 5" :y2="5" stroke="yellow" stroke-width="0.5" />
-              <line :x1="width/5" :y1="0" :x2="width/5 - 5" :y2="-5" stroke="yellow" stroke-width="0.5" />
-              <line :x1="0" :y1="0" :x2="width/5" :y2="0" stroke="yellow" stroke-width="0.5" />
-            </g>
-            <g>
-              <line :x1="0" :y1="-width/5" :x2="5" :y2="-width/5 + 5" stroke="gray" stroke-width="0.5" />
-              <line :x1="0" :y1="-width/5" :x2="-5" :y2="-width/5 + 5" stroke="gray" stroke-width="0.5" />
-              <line :x1="0" :y1="0" :x2="0" :y2="-width/5" stroke="gray" stroke-width="0.5" />
-            </g>
-
-            <circle cx="0" cy="0" :r="solarRadius" :fill="solarColor" />
-
-            <ellipse
-              :cx="- f * a * e"
-              :cy="0"
-              :rx="f * a"
-              :ry="f * a * Math.sqrt(1 - Math.pow(e, 2))"
-              :transform="`rotate(${-node}) scale(1.0, ${Math.cos(incl/180 * Math.PI)}) rotate(${-peri})`"
-              fill="none"
-              stroke="#ffffff"
-              stroke-width="1"
-              />
-          </g>
-        </svg>
-      </div>
       <div class="block" id="gl">
         <div style="position:absolute">
           <label>
@@ -116,7 +87,7 @@ body {
       </div>
     </div>
     <div id="controller">
-      <div for="e" style="display:flex">
+      <div for="a" style="display:flex">
         <div style="flex:1">軌道長半径<span class="hide-small-display">(a)</span></div>
         <div style="width:4em">
           <input v-if="e < 1.0" v-model="a" type="number" step="0.1" min="0.1" :disabled="1.0 <= e" />
@@ -132,32 +103,30 @@ body {
       <div for="e" style="display:flex">
         <div style="flex:1">離心率<span class="hide-small-display">(e)</span></div>
         <div style="width:4em">
-          <input v-model="e" type="number" step="0.01" max="0.99" min="0.00">
+          <input v-model="e" type="number" step="0.01" min="0.00" />
         </div>
       </div>
-      <div for="W" style="display:flex">
+      <div for="i" style="display:flex">
         <div style="flex:1">近点引数<span class="hide-small-display">(peri)</span></div>
         <div style="width:4em">
-          <input v-model="peri" type="number" step="1.0" min="0.0" max="360.0">
+          <input v-model="peri" type="number" step="1.0" min="0.0" max="360.0" />
         </div>
       </div>
       <div for="i" style="display:flex">
         <div style="flex:1">軌道傾斜角<span class="hide-small-display">(incl)</span></div>
         <div style="width:4em">
-          <input v-model="incl" type="number" step="1.0" min="0.0" max="180.0">
+          <input v-model="incl" type="number" step="1.0" min="0.0" max="180.0" />
         </div>
       </div>
-      <div for="w" style="display:flex">
+      <div for="W" style="display:flex">
         <div style="flex:1">昇交点黄経<span class="hide-small-display">(node)</span></div>
         <div style="width:4em">
-          <input v-model="node" type="number" step="1.0" min="0.0" max="360.0">
+          <input v-model="node" type="number" step="1.0" min="0.0" max="360.0" />
         </div>
-      </div>
-      <div style="display:flax">
-        <a style="font-size:x-small" href="https://hikoboshi.org/orbital-elements-viewer/orbital-elements-three.html">離心率制限なし（WebGL）</a>
       </div>
     </div>
   </div>
+  <!-- <script src="https://unpkg.com/vue@3"></script> -->
   <script src="https://unpkg.com/vue@3.2.31/dist/vue.global.prod.js"></script>
   <script src="https://unpkg.com/three@0.138.3/build/three.js"></script>
   <script src="https://unpkg.com/three@0.138.3/examples/js/controls/OrbitControls.js"></script>
@@ -190,10 +159,10 @@ createApp({
     const usePerspective = ref(true)
 
     const smallDevice = 720
-    const width  = ref(window.innerWidth < smallDevice ? window.innerWidth : window.innerWidth / 2)
-    const height = ref(window.innerWidth < smallDevice ? window.innerHeight / 2 : window.innerHeight)
-    const tr     = ref(window.innerWidth < smallDevice ? 1.3 : 2.41)
-    const z      = ref(window.innerWidth < smallDevice ? f.value * 4.5 : f.value * 9)
+    const width  = ref(window.innerWidth)
+    const height = ref(window.innerHeight)
+    const tr     = ref(2.41)
+    const z      = ref(f.value * 9)
 
     // # WebGL Rendering Objects
     // scene
@@ -229,12 +198,14 @@ createApp({
       ]),
       new THREE.LineBasicMaterial({color: 0x990000})
     ))
-    const plane = new THREE.Mesh(
+
+    scene.add(new THREE.Mesh(
       new THREE.PlaneGeometry(f.value * 2, f.value * 2, 1, 1),
-      new THREE.MeshLambertMaterial({color: 0x303030, transparent: true, opacity: 0.1})
-    )
-    plane.position.set(0, 0, 0.000001)
-    scene.add(plane)
+      new THREE.MeshLambertMaterial({
+        color: 0x333333,
+        transparent: true, opacity: 0.5,
+        side: THREE.DoubleSide})
+    ))
 
     // additional lines
     const nodeLine = new THREE.Line(
@@ -267,7 +238,7 @@ createApp({
     // additional plane
     const orbitalPlane = new THREE.Mesh(
       new THREE.PlaneGeometry(f.value * 2, f.value * 2, 1, 1),
-      new THREE.MeshLambertMaterial({color: 0x0000cc, transparent: true, opacity: 0.1})
+      new THREE.MeshLambertMaterial({color: 0x0000cc, transparent: true, opacity: 0.3, side: THREE.DoubleSide})
     )
     scene.add(orbitalPlane)
 
@@ -354,7 +325,7 @@ createApp({
     // camera
     const aspect = width.value / height.value
 
-    const pCam = new THREE.PerspectiveCamera(30, aspect, 1, 10000)
+    const pCam = new THREE.PerspectiveCamera(30, aspect, 10, 50000)
     pCam.position.set(0, 0, z.value)
     scene.add(pCam)
 
@@ -366,7 +337,7 @@ createApp({
     oCam.position.set(0, 0, z.value)
     scene.add(oCam)
 
-    // camera changer
+    // control
     let updatePerspective = ref(() => {})
 
     onMounted(() => {
@@ -378,12 +349,11 @@ createApp({
       elem.appendChild(renderer.domElement)
 
       // control
-      let control
+      let control = new THREE.OrbitControls(usePerspective.value ? pCam : oCam, elem)
       updatePerspective.value = () => {
         if (control) { control.dispose() }
         control = new THREE.OrbitControls(usePerspective.value ? pCam : oCam, elem)
       }
-      updatePerspective.value()
 
       // render flame
       const renderFrame = () => {
@@ -399,9 +369,8 @@ createApp({
       renderFrame()
 
       window.addEventListener('resize', () => {
-        width.value  = window.innerWidth < smallDevice ? window.innerWidth : window.innerWidth / 2
-        height.value = window.innerWidth < smallDevice ? window.innerHeight / 2 : window.innerHeight
-        tr.value     = window.innerWidth < smallDevice ? 1.3 : 2.41
+        width.value  = window.innerWidth
+        height.value = window.innerHeight
 
         const aspect = width.value / height.value
 
